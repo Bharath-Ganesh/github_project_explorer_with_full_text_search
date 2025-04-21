@@ -1,0 +1,117 @@
+# === General App UI Text and Messaging ===
+app:
+  title: IS597PR Final Projects Explorer  # Title displayed at the top of the Streamlit app
+  search_input_text: Search by keyword (e.g., monte carlo, traffic, covid)  # Placeholder for keyword search bar
+  year_filter_text: Filter by year (e.g., 2019, 2020). Leave empty to search all years.  # Description shown above year filter
+  missing_column_msg: 'Some columns are missing: {cols}. Showing available columns.'  # Warning message when some columns are not present in the data
+
+# === Input/Output Paths ===
+input_csv: data/semesters.csv  # Path to the input CSV containing GitHub repo links
+output_json: data/projects.json  # Path where processed project metadata will be saved as JSON
+
+# === Table Display Configuration ===
+# === Table Display Configuration ===
+display_columns:
+  - table_styles:
+      table:
+        width: 95%
+        border-collapse: collapse
+        margin-top: 20px
+      cell:
+        padding: 8px
+        border: 1px solid #ddd
+        text-align: left
+  - field: title
+    label: Title
+    max_width: 300px
+
+  - field: team_members
+    label: Team Members
+    format: list_to_string
+    max_width: 200px
+
+  - field: semester
+    label: Semester
+    max_width: 120px
+
+  - field: repo_url
+    label: Repo URL
+    link: true
+    max_width: 200px
+
+  - field: libraries
+    label: Libraries
+    format: list_to_string
+    max_width: 250px
+
+default_column_width: 300px
+
+
+
+# === Git Sparse Checkout Configuration ===
+sparse_clone_paths:  # These are the only files pulled during cloning (saves space and time)
+  - "README.md"
+  - "*.py"
+  - "**/*.py"
+  - "*.ipynb"
+  - "**/*.ipynb"
+
+# === Cloning & Metadata Extraction ===
+max_threads: 6  # Number of threads for parallel cloning/processing
+fields_to_extract:  # List of metadata fields to extract from each project
+  - title
+  - team_members
+  - readme_text
+  - libraries
+  - monte_carlo_simulation
+
+readme_lines_to_scan: 40  # Maximum number of lines to scan in README.md
+normalize_text: true  # Whether to lowercase and clean text for search
+generate_search_blob: true  # If true, a combined text blob will be generated for full-text search
+use_embeddings: false  # If true, semantic embeddings (e.g., sentence-transformers) will be generated
+
+# === PostgreSQL Configuration ===
+postgres:
+  host: localhost
+  port: 5432
+  dbname: projectdb
+  user: postgres
+  password: password
+
+fts_threshold: 60  # Minimum score or rank for full-text search match relevance
+
+# === Graph Display Settings ===
+graph_options:
+  height: 600px  # Height of the PyVis network graph in the app
+  width: 100%  # Width of the graph
+  bgcolor: '#ffffff'  # Background color of the graph
+  font_color: black  # Font color used in the graph
+
+# === Search Filters (Configurable Inputs) ===
+filters:
+  keyword:
+    enabled: true                    # Enables the keyword search box
+    label: Search by keyword (e.g., monte carlo, pandas, traffic, seat)
+    field: keyword                   # Special field used only for search matching
+    type: text                       # Standard text input
+
+  year:
+    enabled: true
+    label: Filter by year (e.g., 2019, 2020)
+    field: year
+    type: text
+
+  semester:
+    enabled: true
+    label: Filter by semester (e.g., Fall 2020)
+    field: semester
+    type: text
+
+  project_type:
+    enabled: false                   # Hidden by default unless toggled on
+    label: Project Type (e.g., Type I, Type II)
+    field: project_type
+    type: dropdown
+    options:
+      - Type I
+      - Type II
