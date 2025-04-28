@@ -1,5 +1,5 @@
 import networkx as nx
-from project_utils.logger_setup import setup_logger, get_logger
+from project_utils.starter_class import setup_logger, get_logger
 
 logger = get_logger(__name__)
 

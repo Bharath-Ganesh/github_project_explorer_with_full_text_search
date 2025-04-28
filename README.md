@@ -14,9 +14,9 @@ This project uses PostgreSQL for storing data and searching through it using ful
 - Extract project titles, team members, libraries used, and key phrases from READMEs
 - Normalize and clean text for better searching
 - Use PostgreSQL full-text search to quickly find relevant projects
-- Let users search by keyword, year, library, or other fields
+- Let users search by keyword, year, library, or other fields defined in `config.yaml`
 - Visualize connections between students and the tools they used with a network graph
-- Configure everything using a single config file
+- Fully configure UI and data behavior via a single `config.yaml` file
 
 ---
 
@@ -26,137 +26,128 @@ This project uses PostgreSQL for storing data and searching through it using ful
 project-root/
 │
 ├── data/
-│   ├── semesters.csv             # GitHub URLs to fetch forks
-│   └── projects.json             # Optional local backup of all parsed data
+│   ├── semesters.csv               # GitHub URLs to fetch forks
+│   └── projects.json               # Local backup of parsed data (optional)
 │
-├── config.yaml                   # Main config file for the whole project
+├── config.yaml                     # Main configuration for UI, fields, filters, DB, styles
 │
-├── app.py                        # Main Streamlit app
+├── app.py                          # Main Streamlit application
 │
 ├── scripts/
-│   └── generate_project_metadata.py  # Creates the database snapshot
+│   └── generate_project_metadata.py # clone repos → parse → preprocess → load DB
 │
 ├── project_utils/
-│   ├── github_utils.py           # For cloning GitHub repos
-│   ├── readme_parser.py          # Parses titles, team names, and descriptions
-│   ├── preprocess.py             # Cleans and normalizes text
-│   ├── search_utils.py           # Handles database search queries
-│   ├── graph_utils.py            # Creates network graphs
-│   ├── embedding_utils.py        # (Optional) For semantic search with vectors
-│   ├── db_setup.sql              # SQL commands to create tables and indexes
-│   └── logger_setup.py           # Logging setup
+│   ├── github_utils.py             # Clones GitHub repos using sparse checkout
+│   ├── readme_parser.py            # Parses README sections based on config
+│   ├── preprocess.py               # Cleans and normalizes text for indexing
+│   ├── db.py                        # Database connection and raw SQL execution
+│   ├── dao.py                       # DAO layer: dynamic SQL builder for filters/fields
+│   ├── graph_utils.py              # Builds interactive NetworkX/PyVis graphs
+│   ├── logger_setup.py             # Centralized logging for app and scripts
+│   └── db_setup.sql                # SQL schema and indexes for PostgreSQL
 │
-└── README.md                     # This file
+└── README.md                       # This file
 ```
-
----
 
 ---
 
 ## How Each Part Works
 
-### Step 1: Clone GitHub Repos (One-Time)
-We perform a one-time shallow clone of each GitHub repository using sparse checkout. Only critical files like `README.md` and `.py` files are downloaded. This helps reduce clone time and avoids unnecessary content like media, tests, or data files. This behavior is driven by configuration and can be adapted to include/exclude more file types in the future.
+1. **Clone GitHub Repos** (`scripts/generate_project_metadata.py`)
+   - Reads `data/semesters.csv` from config.
+   - Uses `github_utils.py` to sparse-clone only required files (`README.md`, `.py`).
 
-### Step 2: Parse README and Extract Metadata
-We parse the README files to extract structured fields such as:
-- Project title
-- Team members
-- Key descriptive sections like simulation descriptions
+2. **Parse and Extract Metadata**
+   - `readme_parser.py` extracts fields defined under `extract_sections` in `config.yaml` (e.g., title, team_members).
+   - `preprocess.py` normalizes text: lowercasing, stopword removal, punctuation stripping, whitespace cleanup.
 
-These fields are configurable via `config.yaml`, meaning you can choose which sections to extract without modifying the core logic. For example, if you want to focus on "purpose" or "dataset" sections instead, the parser logic can be reused by adjusting config values.
+3. **Load into PostgreSQL**
+   - Schema defined in `project_utils/db_setup.sql`.
+   - ETL script writes cleaned records and arrays (libraries) into the `projects` table.
+   - A `search_vector` column uses `to_tsvector()` and a GIN index for fast full-text queries.
 
-We also scan Python files to detect which libraries were used in the project. This gives insights into trends in tooling, frameworks, or analysis libraries across different semesters.
+4. **DAO Layer** (`project_utils/dao.py`)
+   - Reads `filters` and `display_columns` from `config.yaml`.
+   - Builds dynamic `SELECT` clause for requested fields.
+   - Builds `WHERE` clauses based on non-empty filters (keyword, year, team_members, libraries, etc.).
+   - Executes SQL and returns list of dicts.
 
-### Step 3: Preprocess Text for Search
-To prepare for effective full-text search, we normalize the extracted fields by:
-- Lowercasing all text
-- Removing common stopwords
-- Stripping punctuation and excess whitespace
-- Combining important fields into a single `search_blob`
-
-This ensures consistent and accurate search performance without user errors from formatting.
-
-### Step 4: Store Structured Data in PostgreSQL
-The parsed and cleaned data is stored in a PostgreSQL database. We create a full-text index column called `search_vector` using `to_tsvector()`, and apply a GIN index to accelerate keyword matching. This makes the data fast to query using SQL-based search expressions.
-
-### Step 5: Perform Full-Text Search
-We query the indexed database using `to_tsquery()` to retrieve relevant projects. These results are matched by ranked relevance, and allow for keyword-based or boolean search expressions. Results are returned to the frontend as dictionaries or DataFrames.
-
-### Step 6: Generate a Network Graph
-For each set of search results, we build a network graph that maps out:
-- Which students worked on which projects
-- Which libraries were used in those projects
-- How multiple projects might be related by shared contributors or libraries
-
-This provides a visual summary of collaboration and tool usage across semesters.
-
-### Step 7: Explore Results via Streamlit
-We expose everything through a Streamlit app that lets users:
-- Search for keywords and filter by semester or year
-- View tabular results and metadata for each project
-- Explore connections between students and projects using an interactive graph
-
-This frontend makes the system accessible to non-technical users like instructors or reviewers who want a quick understanding of classroom projects.
+5. **Streamlit Frontend** (`app.py`)
+   - Loads config via `starter_class`.
+   - Renders dynamic filters (text inputs or dropdowns) based on `filters` section.
+   - Calls `DAO.search_projects(...)` with `filter_inputs`, `select_fields`, `default_limit`.
+   - Converts results to DataFrame and passes to `generate_styled_html()`.
+   - Displays styled HTML table and interactive graph from `graph_utils.py`.
 
 ---
 
-## Configuration: `config.yaml`
+## Configuration (`config.yaml`)
 
-All the behavior of this system, such as which fields to extract, how many lines of the README to scan, and how to connect to PostgreSQL, is controlled through the config.yaml file. This file makes it easy to customize what gets parsed, stored, and visualized without needing to touch the code.
+All behavior is driven by `config.yaml`, including:
+
+- **Database credentials** (`postgres` section)
+- **Fields to display** (`display_columns` section: field, label, max_width, link, styles)
+- **Filters** (`filters` section: enabled, label, field, type, options)
+- **Extract sections** (`extract_sections` for README parsing)
+- **UI text** (app.title, search_input_text, no_results_text, etc.)
+- **Defaults** (`default_limit`, `readme_lines_to_scan`, `default_column_width`)
 
 ---
 
-## How to Run the Project
+## Flow Diagram (UML Sequence)
 
-### 1. Clone and Parse Repos
-```
-python scripts/generate_project_metadata.py --config config.yaml
-```
-This will clone the repos, parse the data, and insert it into your local PostgreSQL database.
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant A as Streamlit App (app.py)
+    participant C as Config Loader
+    participant D as DAO (dao.py)
+    participant DB as PostgreSQL
+    participant R as Renderer (renderer.py)
 
-### 2. Set Up PostgreSQL
+    U->>A: load page
+    A->>C: load config.yaml
+    C-->>A: return config dict
+    A->>U: render filters
+    U->>A: set filters and click Search
+    A->>D: search_projects(filters, select_fields, limit)
+    D->>DB: execute dynamic SQL
+    DB-->>D: return rows
+    D-->>A: return results list
+    A->>R: generate_styled_html(results)
+    R-->>A: HTML table + graph
+    A->>U: display table & graph
 ```
-psql -U postgres -d projectdb -f project_utils/db_setup.sql
-```
-Make sure the username and password match your config file.
 
-### 3. Launch the Streamlit App
-```
-streamlit run app.py
-```
-You’ll be able to search and view the graph through your browser.
+---
+
+## Setup & Usage
+
+1. **Generate Metadata & Load DB**
+   ```bash
+   python scripts/generate_project_metadata.py --config config.yaml
+   psql -U <user> -d <db> -f project_utils/db_setup.sql
+   ```
+2. **Run Streamlit App**
+   ```bash
+   streamlit run app.py
+   ```
+3. **Access** at `http://localhost:8501`
 
 ---
 
 ## Example Searches
 
-- **monte carlo** – shows simulation projects
-- **queue** – shows models involving wait lines
-- **graph** – shows projects using NetworkX or PyVis
-- You can also filter by year or semester in the app
+- `monte carlo` (simulation)
+- `queue` (queuing models)
+- `pandas` (data analysis)
 
 ---
 
-## Why PostgreSQL and Network Graphs?
+## Future Ideas
 
-PostgreSQL gives us a powerful, production-grade way to index and query large text fields with high performance. It’s structured, reliable, and supports flexible search logic through full-text search extensions. By using GIN indexes on `tsvector` fields, search results are instant even for large project sets.
-
-Network graphs complement this by surfacing collaboration and technology trends. Instead of reading through every record manually, users can visually spot clusters of students, overlapping tools, and cross-semester themes.
-
-Together, they combine the power of data processing with the clarity of visual storytelling.
+- Semantic search with embedding vectors
+- CSV/Excel export of results
+- Trend analysis of libraries over semesters
 
 ---
-
-## Ideas for the Future
-
-- Add support for semantic search with vector embeddings
-- Add filters by number of libraries or lines of code
-- Export results to Excel or CSV
-- Track trends in library usage across semesters
-
----
-
-## Final Note
-
-This project gives us a structured and visual way to explore classroom project data from GitHub. It’s easy to reuse and extend, and everything can be done offline after the first run. Feel free to suggest features or improvements!

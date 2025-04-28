@@ -1,0 +1,8 @@
+2025-04-21 01:59:32,130 - __main__ - INFO - __main__: Configuration loaded and AppContext initialized.
+2025-04-21 02:05:18,357 - __main__ - INFO - __main__: Configuration loaded and AppContext initialized.
+2025-04-21 02:06:33,260 - __main__ - INFO - __main__: Configuration loaded and AppContext initialized.
+2025-04-21 02:06:33,260 - project_utils.readme_library_parser - INFO - [Offline Parser Init] Allowed file patterns: ['README.md', '*.py', '**/*.py', '*.ipynb', '**/*.ipynb']
+2025-04-21 02:06:33,260 - __main__ - INFO - [Enricher Initialized] Input file: data/projects.json, Output file: data/enriched_projects.json
+2025-04-21 02:06:33,260 - __main__ - INFO - Starting enrichment process...
+2025-04-21 02:06:33,260 - __main__ - ERROR - Input file not found: data/projects.json
+2025-04-27 22:32:16,730 - __main__ - INFO - __main__: Configuration loaded from D:\UIUC_Academics\Sem-2\PR\Final_Project\config.yaml
