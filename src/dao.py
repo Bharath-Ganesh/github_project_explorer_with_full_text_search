@@ -30,6 +30,7 @@ class ProjectsDAO:
         parts, where, params = [f"SELECT {select_clause} FROM {self.table}"], [], []
 
         # 2) Apply filters
+        self._apply_author_filter(filters, where, params)
         self._apply_keyword_filter(filters, where, params)
         self._apply_library_filter(filters, where, params)
         self._apply_year_filter(filters, where, params)
@@ -90,6 +91,14 @@ class ProjectsDAO:
 
     # ─── private filter builders ────────────────────────────────────────────────
 
+    def _apply_author_filter(self, filters, where, params):
+        val = filters.get("author")
+        if not val:
+            return
+        col = self.fields.get('author', {}).get('field', 'team_members')
+        where.append(f"to_tsvector('english', array_to_string({col}, ' ')) @@ plainto_tsquery('english', %s)")
+        params.append(val)
+
     def _apply_keyword_filter(self, filters, where, params):
         kw = filters.get("keyword", "").strip()
         if not kw:
@@ -121,7 +130,7 @@ class ProjectsDAO:
             y = int(val)
         except ValueError:
             return
-        col = self.fields.get('year', {}).get('column', 'year')
+        col = self.fields.get('year', {}).get('field', 'year')  # default to 'year'
         where.append(f"{col} = %s")
         params.append(y)
 

@@ -111,9 +111,10 @@ class PostgresUploader:
                 title_list = sections.get("title", [])
                 title      = " ".join(title_list).strip()[:100]
 
-                team = sections.get("team_members", [])
+
+                team = [c.get("login") for c in full.get("contributors", []) if c.get("login")]
                 if not team:
-                    team = [c.get("login") for c in full.get("contributors", []) if c.get("login")]
+                    team = sections.get("team_members", [])
 
                 # 5) Libraries from extractor
                 libs = full.get("libraries", [])

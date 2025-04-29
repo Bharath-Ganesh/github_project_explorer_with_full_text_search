@@ -122,6 +122,12 @@ filters:
     field: semester
     type: text    # or dropdown with options [F, S]
 
+  author:
+    enabled: true
+    label: "Author"
+    field: team_members
+    type: text
+
   year:
     enabled: true
     label: "Year (e.g., 2017)"
@@ -151,13 +157,6 @@ postgres:
   table: projects
   fts_column: search_vector
   fts_fields: [search_blob]
-
-# === Graph Display Settings ===
-graph_options:
-  height: 600px
-  width: 100%
-  bgcolor: '#ffffff'
-  font_color: black
 
 # === Git Sparse Checkout Configuration ===
 sparse_clone_paths:
