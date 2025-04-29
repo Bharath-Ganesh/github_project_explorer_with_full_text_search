@@ -1,0 +1,19 @@
+# IDE configs
+.idea/
+.vscode/
+
+# Build / libs
+lib/
+
+# Logs
+logs/
+project_utils/logs/
+
+# Sparse‐cloned repos
+project_utils/cloned_repos/
+
+# Environment file
+.env
+
+# Data directories
+clonedrepo/

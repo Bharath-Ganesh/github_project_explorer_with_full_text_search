@@ -105,6 +105,7 @@ class GitHubCloner:
                     "repo": fork["name"],
                     "html_url": fork["html_url"],
                     "created_at": fork.get("created_at"),
+                    "pushed_at": fork.get("pushed_at"),
                     "contributors": self.fetch_contributors(fork["owner"]["login"], fork["name"]),
                     "clone_status": "pending",
                     "clone_path": None,
@@ -113,8 +114,7 @@ class GitHubCloner:
 
             page += 1
             time.sleep(0.5)
-
-        return forks
+            return forks
 
     def shallow_clone_repo(self, owner, repo, semester, destination_root="cloned_repos"):
         folder_name = semester.replace(" ", "").lower()

@@ -167,7 +167,7 @@ sparse_clone_paths:
   - "**/*.ipynb"
 
 # === Cloning & Metadata Extraction ===
-max_threads: 6
+max_threads: 32
 normalize_text: true
 generate_search_blob: true
 use_embeddings: false

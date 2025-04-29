@@ -13,6 +13,7 @@ CREATE TABLE projects (
   repository_url TEXT,
   libraries      TEXT[],              -- detected imports
   created_at     TIMESTAMPTZ,         -- fork creation timestamp
+  last_updated_at     TIMESTAMPTZ,         -- fork creation timestamp
   search_vector  TSVECTOR,
   UNIQUE(owner, repo)       -- full‐text index
 
