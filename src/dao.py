@@ -108,7 +108,7 @@ class ProjectsDAO:
         VALUES
           (%(owner)s, %(repo)s, %(title)s, %(semester)s,
            %(team_members)s, %(repository_url)s,
-           %(libraries)s, %(created_at)s,%(last_updated_at)s
+           %(libraries)s, %(created_at)s,%(last_updated_at)s,
            to_tsvector('english',
              coalesce(%(title)s,'') || ' ' || coalesce(%(readme_text)s,'')))
         ON CONFLICT (owner, repo) DO UPDATE
