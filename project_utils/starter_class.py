@@ -28,9 +28,18 @@ def load_dotenv_file(dotenv_path: Path) -> None:
 _repo_root = Path(__file__).resolve().parent.parent
 load_dotenv_file(_repo_root / ".env")
 
+
 # Now that we’ve loaded the .env, pull out your secrets
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 LOGGER_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# Now that we’ve loaded the .env, pull out your secrets
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_DBNAME = os.getenv("POSTGRES_DBNAME")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_TABLE = os.getenv("POSTGRES_TABLE")
+
 
 # Build HEADERS for the GitHub API only once, now that GITHUB_TOKEN exists
 HEADERS = {

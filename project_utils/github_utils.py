@@ -55,7 +55,7 @@ class GitHubCloner:
 
         # Load previous `pushed_at` timestamps for incremental skipping
         self.old_meta: dict[str, str] = {}
-        meta_path = Path("../data") / "project_data.json"
+        meta_path = Path("data") / "project_data.json"
         if meta_path.is_file():
             try:
                 prev = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -242,7 +242,7 @@ class GitHubCloner:
         Reads `data/semesters.csv`, fetches forks for each semester,
         and sparse‐clones them in parallel.
         """
-        df = pd.read_csv("../data/semesters.csv")
+        df = pd.read_csv("data/semesters.csv")
         all_forks: list[dict] = []
 
         for _, row in df.iterrows():

@@ -1,0 +1,23 @@
+# HTTP & GitHub API
+requests>=2.0
+
+# Data handling
+pandas>=1.0
+pyyaml>=6.0         # for reading config.yaml
+
+# Streaming JSON
+ijson>=3.0
+
+# Notebook parsing & fuzzy README extraction
+nbformat>=5.0
+rapidfuzz>=2.0
+
+# Database
+SQLAlchemy>=1.4
+psycopg2-binary>=2.9
+
+# UI
+streamlit>=1.0
+
+# .env support (if you’re loading environment variables)
+python-dotenv>=1.0
