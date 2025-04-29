@@ -1,4 +1,5 @@
-# === project_utils/readme_extractor.py ===
+# project_utils/readme_extractor.py
+
 import os
 import json
 import re
@@ -12,8 +13,7 @@ import pandas as pd
 import nbformat
 from rapidfuzz import fuzz, process
 
-from project_utils.logger_setup import get_logger, setup_logger
-from project_utils.starter_class import build_context
+from project_utils.starter_class import get_logger, setup_logger, build_context
 
 
 class RepoMetadataExtractor:
@@ -45,11 +45,11 @@ class RepoMetadataExtractor:
             "sparse_clone_paths",
         })
 
-        self.max_lines    = cfg["readme_lines_to_scan"]
-        self.rules        = cfg["extract_sections"]    # section extraction rules
-        self.fields       = list(self.rules.keys())    # infer field names
-        self.max_threads  = cfg["max_threads"]
-        self.patterns     = cfg["sparse_clone_paths"]  # allowed file glob patterns
+        self.max_lines     = cfg["readme_lines_to_scan"]
+        self.rules         = cfg["extract_sections"]     # section extraction rules
+        self.fields        = list(self.rules.keys())     # infer field names
+        self.max_threads   = cfg["max_threads"]
+        self.patterns      = cfg["sparse_clone_paths"]   # allowed file glob patterns
         self.metadata_json = metadata_json
 
     def _normalize(self, text: str) -> str:
@@ -67,13 +67,19 @@ class RepoMetadataExtractor:
         text = m.group(2) if m else line
         if ":" in text:
             lhs, _ = text.split(":", 1)
-            best, score, _ = process.extractOne(self._normalize(lhs), alias_map.keys(),
-                                                 scorer=fuzz.WRatio)
+            best, score, _ = process.extractOne(
+                self._normalize(lhs),
+                alias_map.keys(),
+                scorer=fuzz.WRatio
+            )
             if score >= 80:
                 return alias_map[best]
         elif m:
-            best, score, _ = process.extractOne(self._normalize(m.group(2)), alias_map.keys(),
-                                                 scorer=fuzz.WRatio)
+            best, score, _ = process.extractOne(
+                self._normalize(m.group(2)),
+                alias_map.keys(),
+                scorer=fuzz.WRatio
+            )
             if score >= 80:
                 return alias_map[best]
         return None
@@ -88,8 +94,8 @@ class RepoMetadataExtractor:
         }
 
         result: Dict[str, List[str]] = {}
-        current: Optional[str] = None
-        first_h1: Optional[str] = None
+        current: Optional[str]    = None
+        first_h1: Optional[str]   = None
 
         # Scan up to twice max_lines for headers & content
         for line in lines[: self.max_lines * 2]:
@@ -110,7 +116,7 @@ class RepoMetadataExtractor:
                 else:
                     result[current].append(line)
 
-        # Apply fallbacks (title from heading, or splitting lines)
+        # Apply fallbacks
         for key, meta in self.rules.items():
             fb = meta.get("fallback")
             if fb == "title_from_heading" and not result.get(key) and first_h1:
@@ -135,15 +141,11 @@ class RepoMetadataExtractor:
         return self._parse_lines(text.splitlines())
 
     def parse_readme_path(self, readme_path: Path) -> Dict[str, List[str]]:
-        """
-        Public: parse README.md on disk
-        """
+        """ Public: parse README.md on disk """
         return self._parse_readme(readme_path)
 
     def parse_readme_text(self, content: str) -> Dict[str, List[str]]:
-        """
-        Public: parse a raw README snippet string
-        """
+        """ Public: parse a raw README snippet string """
         return self._parse_lines(content.splitlines())
 
     def _extract_imports(self, path: Path) -> List[str]:
@@ -183,8 +185,9 @@ class RepoMetadataExtractor:
         repo_path = repo.get("clone_path")
         if not repo_path:
             return repo
+
         repo = repo.copy()
-        rp = Path(repo_path)
+        rp   = Path(repo_path)
 
         # README sections
         readme_file = rp / "README.md"
@@ -196,8 +199,9 @@ class RepoMetadataExtractor:
                     repo[key] = [self._truncate(x, 30) for x in vals]
                 else:
                     repo[key] = self._truncate("\n".join(vals), 30) if vals else None
-            raw = readme_file.read_text(encoding="utf-8", errors="ignore").splitlines()
-            repo["readme_text"] = "\n".join(raw[: self.max_lines])
+
+            raw_lines = readme_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+            repo["readme_text"] = "\n".join(raw_lines[: self.max_lines])
         else:
             repo.setdefault("errors", []).append("README.md missing")
 
@@ -213,21 +217,22 @@ class RepoMetadataExtractor:
         return repo
 
     def run(self) -> List[Dict]:
-        # 1) Load
-        df = pd.read_json(self.metadata_json)
+        # 1) Load “online” metadata
+        df    = pd.read_json(self.metadata_json)
         forks = df.to_dict(orient="records")
 
         # 2) Parallel parsing
         enriched: List[Dict] = []
         with ThreadPoolExecutor(max_workers=self.max_threads) as exe:
-            for fut in as_completed([exe.submit(self._process_repo, f) for f in forks]):
+            futures = [exe.submit(self._process_repo, f) for f in forks]
+            for fut in as_completed(futures):
                 enriched.append(fut.result())
 
-        # 3) Output JSON
+        # 3) Write final JSON
         out = Path("data/final_projects.json")
         out.write_text(json.dumps(enriched, indent=2))
 
-        # 4) Push to Postgres via your unified Service/DAO
+        # 4) Push to Postgres
         from src.service import ProjectService
         from src.dao     import ProjectsDAO
         svc = ProjectService(ProjectsDAO(), build_context(__name__)._config)

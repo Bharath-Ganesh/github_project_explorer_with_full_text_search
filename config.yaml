@@ -1,55 +1,166 @@
 # === General App UI Text and Messaging ===
 app:
-  title: IS597PR Final Projects Explorer  # Title displayed at the top of the Streamlit app
-  search_input_text: Search by keyword (e.g., monte carlo, traffic, covid)  # Placeholder for keyword search bar
-  year_filter_text: Filter by year (e.g., 2019, 2020). Leave empty to search all years.  # Description shown above year filter
-  missing_column_msg: 'Some columns are missing: {cols}. Showing available columns.'  # Warning message when some columns are not present in the data
+  title: IS597PR Final Projects Explorer      # Title displayed at the top of the Streamlit app
+  description: "Browse and visualize student final projects from GitHub"
+  search_input_text: "Search by keyword (e.g., monte carlo, traffic, covid)"
+  search_button_text: "Search"
+  missing_column_msg: "Some columns are missing: {cols}. Showing available columns."
 
 # === Input/Output Paths ===
-input_csv: data/semesters.csv  # Path to the input CSV containing GitHub repo links
-output_json: data/projects.json  # Path where processed project metadata will be saved as JSON
+input_csv: "data/semesters.csv"                # Path to the input CSV containing GitHub repo links
+metadata: "../data/project_data.json"              # Path where processed project metadata will be saved
 
-# === Table Display Configuration ===
-# === Table Display Configuration ===
-display_columns:
-  - table_styles:
-      table:
-        width: 95%
-        border-collapse: collapse
-        margin-top: 20px
-      cell:
-        padding: 8px
-        border: 1px solid #ddd
-        text-align: left
-  - field: title
+# === Layout / Table Options ===
+table_options:
+  # "fixed" (equal-width columns) or "auto" (shrink-to-fit)
+  layout: auto
+
+  # if false, the table container will NOT scroll horizontally;
+  # you’ll get word-wrapped cells instead
+  scroll_x: false
+
+
+
+
+# === Field Mapping (DB and Display) ===
+fields:
+  owner:
+    column: owner           # the actual DB column
+    type: text              # data type
+    label: Owner            # column header in the UI
+    max_width: 200px        # CSS max-width for this column
+    wrap: true             # don't wrap long text; will ellipsize
+
+  repo:
+    enabled: false          # disable this column entirely
+    column: repo
+    type: text
+    label: Repository
+    link: false             # no hyperlink on the repo field
+    max_width: 200px
+    wrap: false
+
+  title:
+    column: title
+    type: text
     label: Title
-    max_width: 300px
+    max_width: 200px
+    wrap: true
 
-  - field: team_members
+  team_members:
+    column: team_members
+    type: text[]
     label: Team Members
     format: list_to_string
     max_width: 200px
+    wrap: false         # single‐line cells by default
+    max_lines: 3        # NEW: show at most 3 lines (entries)
+    max_chars: 100     # still truncate each name if >100 chars
 
-  - field: semester
+  semester:
+    column: semester
+    type: text
     label: Semester
-    max_width: 120px
+    max_width: 300px
+    wrap: false
 
-  - field: repo_url
+  repo_url:
+    column: repository_url
+    type: text
     label: Repo URL
-    link: true
-    max_width: 200px
+    link: true              # make this a clickable hyperlink
+    max_width: 150px
+    wrap: true              # allow URL to wrap across lines
 
-  - field: libraries
+  libraries:
+    column: libraries
+    type: text[]
     label: Libraries
     format: list_to_string
-    max_width: 250px
+    max_width: 300px
+    wrap: true              # wrap the list of libraries
 
-default_column_width: 300px
+  created_at:
+    enabled: false          # hide this column in the UI
+    column: created_at
+    type: timestamp
+    label: Created At
+    format: datetime        # renderer will format this as a date/time
+    max_width: 200px
+    wrap: false
 
 
+# config.yaml
+pagination:
+  page_size:    10    # how many per page in the UI
+  max_db_rows: 1000  # cap on how many rows we pull from Postgres
+
+default_sql_limit: 50
+# === Extraction Configuration ===
+readme_lines_to_scan: 40
+extract_sections:
+  title:
+    enabled: true
+    aliases: ["title", "overview", "summary", "about"]
+    fallback: title_from_heading
+  team_members:
+    enabled: true
+    aliases: ["team", "members", "authors", "contributors"]
+    fallback: split_lines
+
+# === Search Filters (Configurable Inputs) ===
+filters:
+  keyword:
+    enabled: true
+    label: "Search by keyword (e.g., monte carlo, pandas, traffic)"
+    field: search_vector
+    type: text
+
+  sem:
+    enabled: False
+    label: "Semester (F/S)"
+    field: semester
+    type: text    # or dropdown with options [F, S]
+
+  year:
+    enabled: true
+    label: "Year (e.g., 2017)"
+    field: year
+    type: text
+
+  library:
+    enabled: true
+    label: "Filter by library"
+    field: libraries   # this is the name of your DB array column
+    type: multiselect  # new!
+    options:           # you can seed this with a static list or fetch distinct libs at startup
+      - numpy
+      - pandas
+      - matplotlib
+      - streamlit
+
+default_limit: 50
+
+# === PostgreSQL Configuration ===
+postgres:
+  host: localhost
+  port: 5432
+  dbname: postgres
+  user: postgres
+  password: 953359
+  table: projects
+  fts_column: search_vector
+  fts_fields: [search_blob]
+
+# === Graph Display Settings ===
+graph_options:
+  height: 600px
+  width: 100%
+  bgcolor: '#ffffff'
+  font_color: black
 
 # === Git Sparse Checkout Configuration ===
-sparse_clone_paths:  # These are the only files pulled during cloning (saves space and time)
+sparse_clone_paths:
   - "README.md"
   - "*.py"
   - "**/*.py"
@@ -57,61 +168,10 @@ sparse_clone_paths:  # These are the only files pulled during cloning (saves spa
   - "**/*.ipynb"
 
 # === Cloning & Metadata Extraction ===
-max_threads: 6  # Number of threads for parallel cloning/processing
-fields_to_extract:  # List of metadata fields to extract from each project
-  - title
-  - team_members
-  - readme_text
-  - libraries
-  - monte_carlo_simulation
+max_threads: 6
+normalize_text: true
+generate_search_blob: true
+use_embeddings: false
 
-readme_lines_to_scan: 40  # Maximum number of lines to scan in README.md
-normalize_text: true  # Whether to lowercase and clean text for search
-generate_search_blob: true  # If true, a combined text blob will be generated for full-text search
-use_embeddings: false  # If true, semantic embeddings (e.g., sentence-transformers) will be generated
-
-# === PostgreSQL Configuration ===
-postgres:
-  host: localhost
-  port: 5432
-  dbname: projectdb
-  user: postgres
-  password: password
-
-fts_threshold: 60  # Minimum score or rank for full-text search match relevance
-
-# === Graph Display Settings ===
-graph_options:
-  height: 600px  # Height of the PyVis network graph in the app
-  width: 100%  # Width of the graph
-  bgcolor: '#ffffff'  # Background color of the graph
-  font_color: black  # Font color used in the graph
-
-# === Search Filters (Configurable Inputs) ===
-filters:
-  keyword:
-    enabled: true                    # Enables the keyword search box
-    label: Search by keyword (e.g., monte carlo, pandas, traffic, seat)
-    field: keyword                   # Special field used only for search matching
-    type: text                       # Standard text input
-
-  year:
-    enabled: true
-    label: Filter by year (e.g., 2019, 2020)
-    field: year
-    type: text
-
-  semester:
-    enabled: true
-    label: Filter by semester (e.g., Fall 2020)
-    field: semester
-    type: text
-
-  project_type:
-    enabled: false                   # Hidden by default unless toggled on
-    label: Project Type (e.g., Type I, Type II)
-    field: project_type
-    type: dropdown
-    options:
-      - Type I
-      - Type II
+# === Other Settings ===
+default_column_width: 250px

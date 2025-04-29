@@ -1,9 +1,10 @@
-# === src/renderer.py ===
+# src/renderer.py
+
 import streamlit as st
 import pandas as pd
 import tempfile
-from project_utils.starter_class import build_context
-from project_utils.graph_utils import generate_graph
+from project_utils.starter_class import setup_logger, get_logger, build_context
+
 
 class UIConfig:
     """
@@ -11,8 +12,18 @@ class UIConfig:
     Must be invoked before any other st.* call.
     """
     def __init__(self, ctx=None):
+        setup_logger()
+        self.logger = get_logger(self.__class__.__name__)
+
         self.ctx    = ctx or build_context(self.__class__.__name__)
         self.app_ui = self.ctx.get_app_ui()
+
+        self.logger.info(
+            "UIConfig:init title=%r layout=%r description=%r",
+            self.app_ui.get("title"),
+            self.app_ui.get("layout"),
+            self.app_ui.get("description"),
+        )
 
     def apply(self):
         st.set_page_config(
@@ -26,26 +37,37 @@ class UIConfig:
 
 class Renderer:
     """
-    Combines page setup (via UIConfig) with table/graph rendering.
+    Renders a table with:
+     - per-column max_width
+     - wrap/no-wrap
+     - max_chars truncation
+     - max_lines clamping
+     - horizontal scrolling wrapper
     """
     def __init__(self, fields_cfg: list[dict], graph_options: dict, default_column_width: str):
+        setup_logger()
+        self.logger = get_logger(self.__class__.__name__)
 
-
-        # 1) Pull missing‐column message from config
-        app_ui = build_context(__name__).get_app_ui()
+        app_ui = build_context(self.__class__.__name__).get_app_ui()
         self.missing_msg = app_ui.get("missing_column_msg", "Some columns are missing: {cols}")
 
-        # 2) Unpack optional table_styles
+        # strip out optional table_styles
         first = fields_cfg[0] if fields_cfg else {}
         if isinstance(first, dict) and "table_styles" in first:
             self.table_styles = first["table_styles"]
-            self.fields = fields_cfg[1:]
+            self.fields       = fields_cfg[1:]
         else:
             self.table_styles = {"table": {}, "cell": {}}
-            self.fields        = fields_cfg
+            self.fields       = fields_cfg
 
-        self.graph_options        = graph_options
-        self.default_column_width = default_column_width
+        self.default_w     = default_column_width
+        self.graph_options = graph_options
+
+        self.logger.info(
+            "Renderer:init fields=%s default_w=%r",
+            [f["field"] for f in self.fields],
+            self.default_w
+        )
 
     def render_table(self, rows: list[dict]):
         df = pd.DataFrame(rows)
@@ -53,52 +75,82 @@ class Renderer:
         if missing:
             st.warning(self.missing_msg.format(cols=", ".join(missing)))
 
-        # Build CSS
-        default_table = {
-            "width": "auto",
+        # outer table CSS
+        tbl_cfg = {
+            "width": "100%",
             "border-collapse": "collapse",
-            "margin-top": "20px",
-            "table-layout": "fixed"
+            "table-layout": "fixed",
+            **self.table_styles.get("table", {})
         }
-        default_cell = {
-            "overflow": "hidden",
-            "text-overflow": "ellipsis",
-            "white-space": "nowrap",
-            "padding": "6px"
-        }
+        tbl_css = "; ".join(f"{k}: {v}" for k, v in tbl_cfg.items())
 
-        tbl_cfg  = {**default_table, **self.table_styles.get("table", {})}
-        cell_cfg = {**default_cell,  **self.table_styles.get("cell",  {})}
-
-        table_css = "; ".join(f"{k}: {v}" for k, v in tbl_cfg.items())
-        cell_css  = "; ".join(f"{k}: {v}" for k, v in cell_cfg.items())
-
-        # Header
-        html = f'<table style="{table_css}"><thead><tr>'
+        html = f'<div style="overflow-x:auto;"><table style="{tbl_css}"><thead><tr>'
         for f in self.fields:
             label = f.get("label", f["field"])
-            max_w  = f.get("max_width", self.default_column_width)
+            max_w  = f.get("max_width", self.default_w)
             html  += f'<th style="max-width:{max_w};">{label}</th>'
-        html += '</tr></thead><tbody>'
+        html += "</tr></thead><tbody>"
 
-        # Rows
         for _, row in df.iterrows():
-            html += '<tr>'
+            html += "<tr>"
             for f in self.fields:
-                fld = f["field"]
-                val = row.get(fld, "")
-                cell = "<br>".join(map(str, val)) if isinstance(val, list) else str(val)
-                if f.get("link") and pd.notna(val):
-                    cell = f'<a href="{val}" target="_blank">{val}</a>'
-                max_w = f.get("max_width", self.default_column_width)
-                html += f'<td style="max-width:{max_w}; {cell_css}">{cell}</td>'
-            html += '</tr>'
+                alias = f["field"]
+                raw   = row.get(alias, "")
 
-        html += '</tbody></table>'
+                # flatten & truncate by max_chars
+                if isinstance(raw, list):
+                    parts = []
+                    for itm in raw:
+                        s = str(itm)
+                        mc = f.get("max_chars")
+                        if mc and len(s) > mc:
+                            s = s[:mc].rstrip() + "…"
+                        parts.append(s)
+                    text = "<br>".join(parts)
+                else:
+                    s = str(raw)
+                    mc = f.get("max_chars")
+                    if mc and len(s) > mc:
+                        s = s[:mc].rstrip() + "…"
+                    text = s
+
+                # turn into link
+                if f.get("link") and isinstance(raw, str) and raw:
+                    text = f'<a href="{raw}" target="_blank">{text}</a>'
+
+                # build cell CSS
+                cell_styles = {
+                    **self.table_styles.get("cell", {}),
+                    "padding": "6px",
+                    "max-width": f.get("max_width", self.default_w),
+                }
+
+                max_lines = f.get("max_lines")
+                if max_lines:
+                    cell_styles.update({
+                        "display": "-webkit-box",
+                        "-webkit-box-orient": "vertical",
+                        "-webkit-line-clamp": str(max_lines),
+                        "overflow": "hidden",
+                    })
+                else:
+                    if f.get("wrap", True):
+                        cell_styles.update({
+                            "white-space": "normal",
+                            "word-wrap": "break-word",
+                        })
+                    else:
+                        cell_styles.update({
+                            "white-space": "nowrap",
+                            "overflow": "hidden",
+                            "text-overflow": "ellipsis",
+                        })
+
+                cell_css = "; ".join(f"{k}: {v}" for k, v in cell_styles.items())
+                html += f'<td style="{cell_css}">{text}</td>'
+
+            html += "</tr>"
+
+        html += "</tbody></table></div>"
         st.markdown(html, unsafe_allow_html=True)
 
-    def render_graph(self, rows: list[dict]):
-        G = generate_graph(rows, **self.graph_options)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp:
-            G.save_graph(tmp.name)
-            st.components.v1.html(tmp.read().decode(), height=self.graph_options.get("height", 600))

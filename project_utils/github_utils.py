@@ -42,9 +42,8 @@ import pandas as pd
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from project_utils.logger_setup import get_logger, setup_logger
+from project_utils.starter_class import get_logger, setup_logger, HEADERS
 from project_utils.starter_class import build_context
-from project_utils.env_utils import HEADERS
 
 class GitHubCloner:
     def __init__(self):
@@ -65,9 +64,10 @@ class GitHubCloner:
             return parts[0], parts[1]
         raise ValueError(f"Invalid GitHub URL: {repo_url}")
 
+
     def fetch_contributors(self, owner, repo):
         url = f"https://api.github.com/repos/{owner}/{repo}/contributors"
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(url, headers = HEADERS)
         if response.status_code == 200:
             return [
                 {"login": c["login"], "contributions": c["contributions"]}
@@ -194,8 +194,8 @@ class GitHubCloner:
             fork["errors"].append(str(e))
         return fork
 
-    def get_forks_from_semester_csv(self, csv_path="data/semesters.csv"):
-        df = pd.read_csv(csv_path)
+    def get_forks_from_semester_csv(self):
+        df = pd.read_csv("../data/semesters.csv")
         all_fork_metadata = []
 
         for _, row in df.iterrows():
@@ -222,3 +222,20 @@ class GitHubCloner:
         enriched_data = self.get_forks_from_semester_csv()
         self.logger.info(f"Cloning completed. Total projects: {len(enriched_data)}")
         return enriched_data
+
+
+if __name__ == '__main__':
+    cloner = GitHubCloner()
+    enriched_data = cloner.run()
+
+    # write out to data/project_data.json
+    import json
+    from pathlib import Path
+
+    out_path = Path(__file__).resolve().parent.parent / "data" / "project_data.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(enriched_data, f, indent=2)
+
+    print(f"Wrote {len(enriched_data)} records to {out_path}")

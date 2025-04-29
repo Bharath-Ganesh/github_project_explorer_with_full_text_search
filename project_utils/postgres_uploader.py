@@ -1,150 +1,162 @@
 #!/usr/bin/env python
 """
-postgres_uploader.py — Upload enriched + extracted metadata to Postgres
+streaming_postgres_uploader.py — Apply schema and then stream & batch-insert
+enriched + extracted project metadata into Postgres.
 
 Flow:
- 1. Read data/enriched_projects.json (contains clone_path & readme_text).
- 2. For each record:
-      • take the raw `readme_text` snippet
-      • parse it via RepoMetadataExtractor.parse_readme_text
-        to extract `title` & `team_members`
-      • fallback to contributors’ logins if no team_members found
- 3. Drop & recreate `projects` table via your SQL DDL.
- 4. Insert rows (owner, repo, title, semester, team_members, repository_url, libraries, created_at)
-    computing `search_vector` inline from title + readme_text.
+ 1. Read your “final_projects.json” (config key = metadata).
+ 2. Apply your full DDL (DROP + CREATE + indexes).
+ 3. Stream the JSON one record at a time, re-extract README/imports,
+    then batch-insert into Postgres.
 """
-import json
+import ijson
 from pathlib import Path
 
-import psycopg2
+from sqlalchemy import create_engine, text
 
-from project_utils.logger_setup    import setup_logger, get_logger
+from project_utils.starter_class import setup_logger, get_logger, build_context
 from project_utils.readme_parser import RepoMetadataExtractor
-from project_utils.starter_class   import build_context
 
 
 class PostgresUploader:
     def __init__(self):
+        # ─── 1) Logging ───────────────────────────────────────────
         setup_logger()
         self.logger = get_logger(__name__)
 
-        # load DB credentials & enriched JSON path
+        # ─── 2) Configuration ────────────────────────────────────
         ctx = build_context(__name__)
-        cfg = ctx.get_required_keys({"postgres", "enriched_json"})
-        self.db_cfg   = cfg["postgres"]
-        self.enriched = cfg["enriched_json"]
-
-        # path to your table DDL
+        pg = ctx.get_required("postgres")
+        # JSON produced by RepoMetadataExtractor.run()
+        self.enriched_json = ctx.get_required("metadata")
+        # DDL file that drops/creates your `projects` table + indexes
         self.ddl_path = Path(__file__).parent / "postgres_schema" / "projects_table.sql"
 
-        # reuse one extractor instance
-        self.extractor = RepoMetadataExtractor()
-
-    def connect(self):
-        return psycopg2.connect(
-            dbname   = self.db_cfg["dbname"],
-            user     = self.db_cfg["user"],
-            password = self.db_cfg["password"],
-            host     = self.db_cfg["host"],
-            port     = self.db_cfg["port"],
+        # ─── 3) SQLAlchemy engine ───────────────────────────────
+        self.engine = create_engine(
+            f"postgresql+psycopg2://{pg['user']}:{pg['password']}"
+            f"@{pg['host']}:{pg['port']}/{pg['dbname']}"
         )
 
-    def load_enriched(self):
-        with open(self.enriched, "r", encoding="utf-8") as f:
-            self.logger.info(f"Loaded enriched projects from {self.enriched}")
-            return json.load(f)
+        # ─── 4) README + import extractor ────────────────────────
+        self.extractor = RepoMetadataExtractor(metadata_json=self.enriched_json)
 
-    def drop_and_create(self, cur):
-        self.logger.info("Dropping existing `projects` table, if any...")
-        cur.execute("DROP TABLE IF EXISTS projects CASCADE;")
-
-        self.logger.info(f"Creating `projects` table from {self.ddl_path}...")
-        ddl = self.ddl_path.read_text(encoding="utf-8")
-        for stmt in ddl.split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                cur.execute(stmt + ";")
-
-    def run(self):
-        enriched_list = self.load_enriched()
-
-        conn = self.connect()
-        cur  = conn.cursor()
-        self.drop_and_create(cur)
-        conn.commit()
-
-        insert_sql = """
+        # ─── 5) INSERT template ──────────────────────────────────
+        self.insert_sql = text("""
         INSERT INTO projects
-          (owner, repo, title, semester, team_members, repository_url, libraries, created_at, search_vector)
+          (owner, repo, title, year, semester, team_members,
+           repository_url, libraries, created_at, search_vector)
         VALUES
           (
-            %s,  -- owner
-            %s,  -- repo
-            %s,  -- title
-            %s,  -- semester
-            %s,  -- team_members (text[])
-            %s,  -- repository_url
-            %s,  -- libraries (text[])
-            %s,  -- created_at
+            :owner, :repo, :title, :year, :semester,
+            :team_members, :repository_url, :libraries, :created_at,
             to_tsvector(
               'english',
-              coalesce(%s,'') || ' ' || coalesce(%s,'')
+              coalesce(:title,'') || ' ' || coalesce(:readme_text,'')
             )
           );
+        """)
+
+    def apply_schema(self):
+        """Run your full DDL (DROP + CREATE + indexes)."""
+        ddl_sql = self.ddl_path.read_text(encoding="utf-8")
+        with self.engine.begin() as conn:
+            conn.execute(text(ddl_sql))
+        self.logger.info("Applied schema from %s", self.ddl_path)
+
+    def _insert_batch(self, conn, batch_params, batch_num: int):
+        """Execute one batch of param-dicts via executemany."""
+        conn.execute(self.insert_sql, batch_params)
+        self.logger.info("Inserted batch %d (%d projects)", batch_num, len(batch_params))
+
+    def stream_and_insert(self, batch_size: int = 100):
         """
+        Stream the JSON file, re-extract any missing README/import data,
+        accumulate into batches, and insert each batch.
+        """
+        path           = Path(self.enriched_json)
+        batch          = []
+        batch_num      = 0
+        total_inserted = 0
 
-        inserted = skipped = 0
+        with path.open("r", encoding="utf-8") as f, self.engine.begin() as conn:
+            parser = ijson.items(f, "item")
+            for raw in parser:
+                # 1) Re-run extraction on clone_path to fill readme_text & libraries
+                full = self.extractor._process_repo(raw)
 
-        for proj in enriched_list:
-            owner      = proj.get("owner")
-            repo       = proj.get("repo")
-            created_at = proj.get("created_at")
-            libs       = proj.get("libraries", [])
-            raw_readme = proj.get("readme_text", "")
-            # new column name mapping
-            repository_url = proj.get("repository_url", proj.get("html_url", ""))
-            semester = proj.get("semester", "")
+                # 2) Normalize semester/year
+                sem = (full.get("semester") or "").strip().upper()
+                try:
+                    year_int = int(sem.split()[-1])
+                except:
+                    year_int = None
 
-            if not raw_readme.strip():
-                skipped += 1
-                self.logger.warning(f"Skipping {owner!r}/{repo!r}: empty README snippet")
-                continue
+                # 2) Ensure we have a README snippet
+                raw_readme = full.get("readme_text", "")
+                # if the online JSON had no snippet, load it from disk
+                if not raw_readme and full.get("clone_path"):
+                    readme_path = Path(full["clone_path"]) / "README.md"
+                    if readme_path.exists():
+                        # use your parse_readme_path to pull out sections
+                        sections = self.extractor.parse_readme_path(readme_path)
+                        # but also take the first N raw lines for indexing
+                        lines = readme_path.read_text(
+                            encoding="utf-8", errors="ignore"
+                        ).splitlines()
+                        raw_readme = "\n".join(lines)
 
-            sections = self.extractor.parse_readme_text(raw_readme)
-            title_list = sections.get("title", [])
-            title = " ".join(title_list).strip()[:100]
+                # 4) Parse out title & team_members
+                sections = self.extractor.parse_readme_text(raw_readme) if raw_readme else {}
+                title_list = sections.get("title", [])
+                title      = " ".join(title_list).strip()[:100]
 
-            readme_team = sections.get("team_members", [])
-            team = readme_team if readme_team else [c.get("login") for c in proj.get("contributors", [])]
+                team = sections.get("team_members", [])
+                if not team:
+                    team = [c.get("login") for c in full.get("contributors", []) if c.get("login")]
 
-            params = [
-                owner,
-                repo,
-                title,
-                semester,
-                team,
-                repository_url,
-                libs,
-                created_at,
-                title,        # for search_vector
-                raw_readme,
-            ]
+                # 5) Libraries from extractor
+                libs = full.get("libraries", [])
 
-            try:
-                cur.execute(insert_sql, params)
-                inserted += 1
-                if inserted % 50 == 0:
-                    conn.commit()
-                    self.logger.info(f"Inserted {inserted} rows…")
-            except Exception as e:
-                self.logger.error(f"Failed to insert {owner!r}/{repo!r}: {e}")
-                conn.rollback()
+                # 6) Build param dict for INSERT
+                params = {
+                    "owner":          full.get("owner"),
+                    "repo":           full.get("repo"),
+                    "title":          title,
+                    "year":           year_int,
+                    "semester":       sem,
+                    "team_members":   team,
+                    "repository_url": full.get("repository_url") or full.get("html_url"),
+                    "libraries":      libs,
+                    "created_at":     full.get("created_at"),
+                    "readme_text":    raw_readme,
+                }
 
-        conn.commit()
-        self.logger.info(f"Done: {inserted} inserted, {skipped} skipped.")
-        cur.close()
-        conn.close()
+                batch.append(params)
 
+                # 7) Flush batch when full
+                if len(batch) >= batch_size:
+                    self._insert_batch(conn, batch, batch_num)
+                    total_inserted += len(batch)
+                    batch_num      += 1
+                    batch.clear()
+
+            # 8) Final partial batch
+            if batch:
+                self._insert_batch(conn, batch, batch_num)
+                total_inserted += len(batch)
+
+        self.logger.info(
+            "Streaming complete: %d batches, %d total projects inserted",
+            batch_num + 1, total_inserted
+        )
+
+    def run(self):
+        # A) Rebuild DB schema
+        self.apply_schema()
+        # B) Stream & batch-insert
+        self.stream_and_insert(batch_size=100)
+        self.logger.info("All done.")
 
 if __name__ == "__main__":
     PostgresUploader().run()
