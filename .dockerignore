@@ -1,0 +1,30 @@
+# Editor/IDE folders
+.idea/
+.vscode/
+__pycache__/
+
+# Git
+.git/
+.gitignore
+
+# Python artifacts
+*.pyc
+*.pyo
+*.pyd
+
+# Logs / Runtime
+*.log
+*.db
+*.ipynb
+.DS_Store
+
+# Environment
+.env
+venv/
+*.env
+
+# Data folders (runtime only)
+project_utils/cloned_repos/*
+
+# Compiled output or local-only code
+lib/

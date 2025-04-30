@@ -37,10 +37,13 @@ class PostgresUploader:
         """
         # ─── 1) Logging ───────────────────────────────────────────
         self.logger = get_logger(__name__)
+        # Log exactly which file is running this init
+        self.logger.info("Initializing PostgresUploader (file: %s)", Path(__file__).resolve())
 
         # ─── 2) Configuration ────────────────────────────────────
         ctx = build_context(__name__)
         pg = ctx.get_required("postgres")
+
         # JSON produced by RepoMetadataExtractor.run()
         self.enriched_json = ctx.get_required("metadata")
         # DDL file that drops/creates your `projects` table + indexes

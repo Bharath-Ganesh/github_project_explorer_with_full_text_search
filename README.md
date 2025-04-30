@@ -25,28 +25,34 @@ This project uses PostgreSQL for storing data and searching through it using ful
 ```
 project-root/
 │
-├── data/
-│   ├── semesters.csv               # GitHub URLs to fetch forks
-│   └── projects.json               # Local backup of parsed data (optional)
-│
-├── config.yaml                     # Main configuration for UI, fields, filters, DB, styles
-│
-├── app.py                          # Main Streamlit application
-│
-├── scripts/
-│   └── generate_project_metadata.py # clone repos → parse → preprocess → load DB
-│
-├── project_utils/
-│   ├── github_utils.py             # Clones GitHub repos using sparse checkout
-│   ├── readme_parser.py            # Parses README sections based on config
-│   ├── preprocess.py               # Cleans and normalizes text for indexing
-│   ├── db.py                        # Database connection and raw SQL execution
-│   ├── dao.py                       # DAO layer: dynamic SQL builder for filters/fields
-│   ├── graph_utils.py              # Builds interactive NetworkX/PyVis graphs
-│   ├── logger_setup.py             # Centralized logging for app and scripts
-│   └── db_setup.sql                # SQL schema and indexes for PostgreSQL
-│
-└── README.md                       # This file
+├── .env
+├── .gitignore
+├── app.py
+├── config.yaml
+├── Dockerfile
+├── README.md
+├── requirements.txt
+├── run_etl.sh
+├── logs\
+├── project_utils\
+│   ├── cloned_repos\
+│   ├── data\
+│   │   ├── project_data.json
+│   │   └── semesters.csv
+│   ├── logs\
+│   │   └── project_parser.log
+│   ├── postgres_schema\
+│   │   └── projects_table.sql
+│   ├── db.py
+│   ├── github_utils.py
+│   ├── postgres_uploader.py
+│   ├── readme_parser.py
+│   └── starter_class.py
+├── src\
+│   ├── dao.py
+│   ├── renderer.py
+│   └── service.py
+
 ```
 
 ---

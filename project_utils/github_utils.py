@@ -171,7 +171,7 @@ class GitHubCloner:
                     for p in self.paths:
                         f.write(p + "\n")
 
-                for branch in ("master", "main"):
+                for branch in ("main", "master"):
                     r = subprocess.run(
                         ["git", "pull", "--depth=1", "origin", branch],
                         cwd=dest_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE

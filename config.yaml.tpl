@@ -1,0 +1,173 @@
+# === General App UI Text and Messaging ===
+app:
+  title: IS597PR Final Projects Explorer      # Title displayed at the top of the Streamlit app
+  description: "Browse and visualize student final projects from GitHub"
+  search_input_text: "Search by keyword (e.g., monte carlo, traffic, covid)"
+  search_button_text: "Search"
+  missing_column_msg: "Some columns are missing: {cols}. Showing available columns."
+
+# === Input/Output Paths ===
+input_csv: "data/semesters.csv"                # Path to the input CSV containing GitHub repo links
+metadata: "data/project_data.json"          # Path where processed project metadata will be saved
+
+# === Layout / Table Options ===
+table_options:
+  # "fixed" (equal-width columns) or "auto" (shrink-to-fit)
+  layout: auto
+
+  # if false, the table container will NOT scroll horizontally;
+  # you’ll get word-wrapped cells instead
+  scroll_x: false
+
+# === Field Mapping (DB and Display) ===
+fields:
+  owner:
+    column: owner           # the actual DB column
+    type: text              # data type
+    label: Owner            # column header in the UI
+    max_width: 200px        # CSS max-width for this column
+    wrap: true              # don't wrap long text; will ellipsize
+
+  repo:
+    enabled: false          # disable this column entirely
+    column: repo
+    type: text
+    label: Repository
+    link: false             # no hyperlink on the repo field
+    max_width: 200px
+    wrap: false
+
+  title:
+    column: title
+    type: text
+    label: Title
+    max_width: 200px
+    wrap: true
+
+  team_members:
+    column: team_members
+    type: text[]
+    label: Team Members
+    format: list_to_string
+    max_width: 200px
+    wrap: false             # single‑line cells by default
+    max_lines: 3            # show at most 3 lines (entries)
+    max_chars: 100          # truncate each name if >100 chars
+
+  semester:
+    column: semester
+    type: text
+    label: Semester
+    max_width: 300px
+    wrap: false
+
+  repo_url:
+    column: repository_url
+    type: text
+    label: Repo URL
+    link: true              # make this a clickable hyperlink
+    max_width: 150px
+    wrap: true              # allow URL to wrap across lines
+
+  libraries:
+    column: libraries
+    type: text[]
+    label: Libraries
+    format: list_to_string
+    max_width: 300px
+    wrap: true              # wrap the list of libraries
+
+  created_at:
+    enabled: false          # hide this column in the UI
+    column: created_at
+    type: timestamp
+    label: Created At
+    format: datetime        # renderer will format this as a date/time
+    max_width: 200px
+    wrap: false
+
+# config.yaml core settings
+pagination:
+  page_size:    10    # how many per page in the UI
+  max_db_rows: 1000  # cap on how many rows we pull from Postgres
+
+default_sql_limit: 50
+
+# === Extraction Configuration ===
+readme_lines_to_scan: 40
+extract_sections:
+  title:
+    enabled: true
+    aliases: ["title", "overview", "summary", "about"]
+    fallback: title_from_heading
+  team_members:
+    enabled: true
+    aliases: ["team", "members", "authors", "contributors"]
+    fallback: split_lines
+
+# === Search Filters (Configurable Inputs) ===
+filters:
+  keyword:
+    enabled: true
+    label: "Search by keyword (e.g., monte carlo, pandas, traffic)"
+    field: search_vector
+    type: text
+
+  sem:
+    enabled: false
+    label: "Semester (F/S)"
+    field: semester
+    type: text
+
+  author:
+    enabled: true
+    label: "Author"
+    field: team_members
+    type: text
+
+  year:
+    enabled: true
+    label: "Year (e.g., 2017)"
+    field: year
+    type: text
+
+  library:
+    enabled: true
+    label: "Filter by library"
+    field: libraries   # this is the name of your DB array column
+    type: multiselect  # new!
+    options:
+      - numpy
+      - pandas
+      - matplotlib
+      - streamlit
+
+default_limit: 50
+
+# === PostgreSQL Configuration ===
+postgres:
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  dbname: ${POSTGRES_DBNAME}
+  user: ${POSTGRES_USER}
+  password: ${POSTGRES_PASSWORD}
+  table: ${POSTGRES_TABLE}
+  fts_column: ${POSTGRES_FTS_COLUMN}
+  fts_fields: [search_blob]
+
+# === Git Sparse Checkout Configuration ===
+sparse_clone_paths:
+  - "README.md"
+  - "*.py"
+  - "**/*.py"
+  - "*.ipynb"
+  - "**/*.ipynb"
+
+# === Cloning & Metadata Extraction ===
+max_threads: 32
+normalize_text: true
+generate_search_blob: true
+use_embeddings: false
+
+# === Other Settings ===
+default_column_width: 250px

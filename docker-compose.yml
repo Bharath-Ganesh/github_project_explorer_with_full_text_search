@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+
+  db:
+    image: postgres:14
+    container_name: fp-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # password/DB name/user loaded from .env via env_file
+      POSTGRES_USER:      ${POSTGRES_USER}
+      POSTGRES_PASSWORD:  ${POSTGRES_PASSWORD}
+      POSTGRES_DB:        ${POSTGRES_DBNAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: etl
+    container_name: fp-etl
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      # override host so it points at the `db` service
+      POSTGRES_HOST: db
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["bash", "run_etl.sh"]
+    restart: "no"   # run once and exit
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    container_name: fp-app
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint:
+      - streamlit
+      - run
+      - app.py
+      - --server.port
+      - "8501"
+      - --server.address
+      - "0.0.0.0"
+    restart: unless-stopped
+
+volumes:
+  db_data:

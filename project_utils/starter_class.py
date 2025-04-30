@@ -9,20 +9,8 @@ from typing import Any, Dict, Optional
 # ENV LOADING
 # -----------------------------------------------------------------------------
 def load_dotenv_file(dotenv_path: Path) -> None:
-    """
-    Parse a .env file at `dotenv_path` and set KEY=VALUE pairs
-    into os.environ, without overwriting anything already present.
-    """
-    if not dotenv_path.exists():
-        logging.getLogger(__name__).warning(f".env file not found at {dotenv_path}")
-        return
-
-    for raw in dotenv_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, val = line.split("=", 1)
-        os.environ.setdefault(key.strip(), val.strip().strip('\'"'))
+    # docker compose
+    pass
 
 # Immediately load your .env from the project root
 _repo_root = Path(__file__).resolve().parent.parent
