@@ -64,5 +64,17 @@ services:
       - "0.0.0.0"
     restart: unless-stopped
 
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: fp-pgadmin
+    depends_on:
+      - db
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5051:80"
+    restart: unless-stopped
+
 volumes:
   db_data:
